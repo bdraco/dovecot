@@ -1,0 +1,137 @@
+Replication with dsync
+======================
+
+NOTE: v2.2 is highly recommended for this. Earlier versions can't do
+incremental metadata syncing. This means that the more mails a mailbox has, the
+slower it is to sync it.
+
+NOTE2: sdbox/mdbox mailbox formats are recommended for replication. Maildir
+still has some issues (although probably not noticeable in normal use).
+
+Make sure that user listing is configured for your userdb, this is required by
+replication:
+
+---%<-------------------------------------------------------------------------
+doveadm user '*'
+---%<-------------------------------------------------------------------------
+
+Enable the replication plugin:
+
+---%<-------------------------------------------------------------------------
+mail_plugins = $mail_plugins notify replication
+---%<-------------------------------------------------------------------------
+
+Replicator process should be started at startup, so it can start replicating
+users immediately:
+
+---%<-------------------------------------------------------------------------
+service replicator {
+  process_min_avail = 1
+}
+---%<-------------------------------------------------------------------------
+
+You need to configure how and where to replicate. Using SSH for example:
+
+---%<-------------------------------------------------------------------------
+dsync_remote_cmd = ssh -l%{login} %{host} doveadm dsync-server -u%u
+plugin {
+  mail_replica = remote:vmail@anotherhost.example.com
+}
+---%<-------------------------------------------------------------------------
+
+The mail processes need to have access to the replication-notify fifo and
+socket. If you have a single vmail UID, you can do:
+
+---%<-------------------------------------------------------------------------
+service aggregator {
+  fifo_listener replication-notify-fifo {
+    user = vmail
+  }
+  unix_listener replication-notify {
+    user = vmail
+  }
+}
+---%<-------------------------------------------------------------------------
+
+The replication-notify only notifies the replicator processes that there is
+work to be done, so it's not terribly insecure either to just set 'mode=0666'.
+
+dsync over TCP connections (v2.2+)
+----------------------------------
+
+Create a listener for doveadm-server:
+
+---%<-------------------------------------------------------------------------
+service doveadm {
+  inet_listener {
+    port = 12345
+  }
+}
+---%<-------------------------------------------------------------------------
+
+And tell doveadm client to use this port by default:
+
+---%<-------------------------------------------------------------------------
+doveadm_port = 12345
+---%<-------------------------------------------------------------------------
+
+Now you can use 'tcp:hostname' as the dsync target. You can also override the
+port with 'tcp:hostname:port'.
+
+SSL
+---
+
+You can also use SSL for the connection:
+
+---%<-------------------------------------------------------------------------
+service doveadm {
+  inet_listener {
+    port = 12345
+    ssl = yes
+  }
+}
+---%<-------------------------------------------------------------------------
+
+The client must be able to verify that the SSL certificate is valid, so you
+need to specify the directory containing valid SSL CA roots:
+
+---%<-------------------------------------------------------------------------
+ssl_client_ca_dir = /etc/ssl/certs
+---%<-------------------------------------------------------------------------
+
+Now you can use 'tcps:hostname' or 'tcps:hostname:port' as the dsync target.
+
+dsync wrapper script for root (v2.2+)
+-------------------------------------
+
+If you're using multiple UIDs, dsync needs to be started as root, which means
+you need to log in as root with ssh (or use sudo). Another possibility is to
+allow root to run only a wrapper script. There is some built-in support for
+this in v2.2+ to make it easier:
+
+dovecot.conf:
+
+---%<-------------------------------------------------------------------------
+dsync_remote_cmd = /usr/bin/ssh -i /root/.ssh/id_dsa.dsync %{host}
+/usr/local/bin/dsync-in-wrapper.sh
+plugin {
+  mail_replica = remoteprefix:vmail@anotherhost.example.com
+}
+---%<-------------------------------------------------------------------------
+
+/root/.ssh/authorized_keys2:
+
+---%<-------------------------------------------------------------------------
+command="/usr/local/bin/dsync-in-wrapper.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty
+<ssh key>
+---%<-------------------------------------------------------------------------
+
+/usr/local/bin/dsync-in-wrapper.sh:
+
+---%<-------------------------------------------------------------------------
+read username
+ulimit -c unlimited # for debugging any crashes
+/usr/local/bin/doveadm dsync-server -u $username
+---%<-------------------------------------------------------------------------
+
+(This file was created from the wiki on 2013-03-20 04:42)

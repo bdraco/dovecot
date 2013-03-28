@@ -1,0 +1,51 @@
+Key-value authentication database (v2.1.9+)
+===========================================
+
+Key-value databases can be used as auth backends. They probably should be used
+only for caching in front of e.g. SQL auth backends, since they don't currently
+support user iteration.
+
+Auth configuration
+------------------
+
+'dovecot.conf':
+
+---%<-------------------------------------------------------------------------
+passdb {
+  driver = dict
+  args = /etc/dovecot/dovecot-dict-auth.conf
+}
+userdb {
+  driver = dict
+  args = /etc/dovecot/dovecot-dict-auth.conf
+}
+---%<-------------------------------------------------------------------------
+
+Dict configuration
+------------------
+
+See the 'dovecot-dict-auth.conf.ext' file from example-config for full list of
+configuration options. Basically you need these:
+
+'/etc/dovecot/dovecot-dict-auth.conf.ext':
+
+---%<-------------------------------------------------------------------------
+uri = redis:host=127.0.0.1:port=6379
+
+password_key = dovecot/passdb/%u
+user_key = dovecot/userdb/%u
+iterate_disable = yes
+default_pass_scheme = plain
+---%<-------------------------------------------------------------------------
+
+Example values
+--------------
+
+Currently only JSON object values are supported. For example userdb lookup
+should return something like:
+
+---%<-------------------------------------------------------------------------
+{ "uid": 123, "gid": 123, "home": "/home/username" }
+---%<-------------------------------------------------------------------------
+
+(This file was created from the wiki on 2013-03-20 04:42)
